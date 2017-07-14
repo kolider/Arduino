@@ -15,13 +15,21 @@
 #define REGISTER_1  CLOCK_PIN_1, DATA_PIN_1, LATCH_PIN_1 
 #define REGISTER_2  CLOCK_PIN_2, DATA_PIN_2, LATCH_PIN_2 
 #define REGISTER_DELAY_MS 10
-#define DATA_WIDTH_REG 8
+#define DATA_WIDTH_REG 7
 
-uint8_t readReg(uint8_t clockPin, uint8_t dataPin, uint8_t latchPin);
+//Прототипи
+char* readReg(uint8_t clockPin, uint8_t dataPin, uint8_t latchPin);
+boolean initialGSM (void);
+boolean sendCommandGSM(char* command);
+void sendRequest(void);
 
+//Глобальні змінні
+char status[DATA_WIDTH_REG] = "eeddeee";
+char status2[DATA_WIDTH_REG] = "eedeeee";
+
+//Первинна настройка
 void setup() {
-  Serial.begin(9600);
-  while(!Serial);
+
   pinMode(CLOCK_PIN_1,OUTPUT); //clock reg1
   pinMode(DATA_PIN_1,INPUT); //data reg1
   pinMode(LATCH_PIN_1,OUTPUT);//latch reg1
@@ -37,30 +45,99 @@ void setup() {
 
   digitalWrite(CLOCK_PIN_2,LOW);  //clock reg2  
   digitalWrite(LATCH_PIN_2,HIGH);  //latch reg2
+
+  Serial.begin(9600);
+  while(!Serial);
+  //while (!initialGSM());
 }
 
+//Робочий Цикл
 void loop() {
 
 }
 
-uint8_t readReg(uint8_t clockPin, uint8_t dataPin, uint8_t latchPin)
+//Реалізація функцій
+char* readReg(uint8_t clockPin, uint8_t dataPin, uint8_t latchPin)
 {
-  uint8_t byteR = 0;
+  char readRegPin[DATA_WIDTH_REG] = "";
   
   digitalWrite(latchPin, LOW);
   delay(REGISTER_DELAY_MS);
   digitalWrite(latchPin, HIGH);
   delay(REGISTER_DELAY_MS);
   
-  for (int i = 0, temp; i < DATA_WIDTH_REG; i++) {
-    temp = digitalRead(dataPin);
+  for (int i = (DATA_WIDTH_REG-1); i >= 0; i--) {
     
-    byteR |= (temp << ((DATA_WIDTH_REG-1) - i));
-    
+    readRegPin[i] = digitalRead(dataPin) ? 'a' : 'n';
+
     digitalWrite(clockPin, HIGH);
     delay(REGISTER_DELAY_MS);
     digitalWrite(clockPin, LOW);
     delay(REGISTER_DELAY_MS);   
   }
-  return byteR;
+  return readRegPin;
+}
+
+boolean initialGSM (void) 
+{
+  if (!sendCommandGSM("AT\r")) return false;
+  
+  if (!sendCommandGSM("AT+CIPSHUT\r\n")) return false;
+
+  if (!sendCommandGSM("AT+CGDCONT=1,\"IP\",\"www.kyivstar.net\"\r")) return false;
+
+  if (!sendCommandGSM("AT+CSTT=\"www.kyivstar.net\"\r")) return false;
+
+  if (!sendCommandGSM("AT+CIICR\r")) return false;
+
+  return true;
+}
+
+boolean sendCommandGSM(char* command)
+{
+
+    String buffer = "";
+    unsigned long timeStart = millis();
+    
+    Serial.print(command);
+    Serial.print("\r");
+
+    while(!Serial.available()){
+        if ((millis() - timeStart) > 5000) return false;
+    }
+    
+    while (Serial.available() ){
+      char c = ""; 
+      Serial.readBytes(&c, 1);
+      buffer += c;
+      if ( Serial.available() ){
+           continue;
+      }else delay(10);    
+    }
+    
+    if (buffer.indexOf("OK") >= 0) return true;
+    else return false;    
+}
+
+void sendRequest(void)
+{
+  Serial.write("AT+CIPSHUT\r");
+
+  delay(5000);
+  Serial.write("AT+CIPSTART=\"TCP\",\"online.tyche.ua\",\"747\"\r");
+
+  delay(5000);
+  char data[] = "{\"s1\":\"1\",\"s2\":\"1\",\"s3\":\"0\"}\r\n";
+  Serial.print("AT+CIPSEND\r");
+
+  delay(1000);
+  Serial.print("POST / HTTP/1.1\r\nHost: online.tyche.ua:747\r\nConnection: Keep-Alive\r\nContent-Type: application/json; charset=UTF-8\r\nContent-Length: 28\r\n\r\n");
+
+  Serial.print(data);
+
+  delay(1000);
+  Serial.write("\r");  
+
+  delay(1000);
+  Serial.print("AT+CIPSHUT\r");
 }
