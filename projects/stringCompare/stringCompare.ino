@@ -1,33 +1,28 @@
-char status[7] = "eeddeed";
+char* result;
 
 void setup() {
-  Serial.begin(9600);
-  while(!Serial);
-  digitalWrite(2,HIGH);
+    Serial.begin(9600);
+    while(!Serial);
+    char var[] = "Hello ";
+    char var2[] = "world";
+    result = strcat(var, var2);
 
-  //int val = strncmp('a','b',1);
+    Serial.print("var sizeof: ");
+    Serial.println(sizeof(var));
 
-  for (int i = 0; i < 7; i++){
-      
-      Serial.print(i);
-      Serial.print(": in line ");
-      Serial.print(status[i], HEX);
-      Serial.print("   ");
+    Serial.print("var2 sizeof: ");
+    Serial.println(sizeof(var2));
 
-      if (status[i] == 'd'){
-          Serial.print(status[i], HEX);
-          Serial.print(" = ");
-          Serial.println('d', HEX);
-      }else{
-          Serial.print(status[i], HEX);
-          Serial.print(" != ");
-          Serial.println('d', HEX);
-      }
-      
-  }
-  
+    Serial.print("result sizeof: ");
+    Serial.println(sizeof(result));
+
+
+    Serial.println(var);
+
+    Serial.print(result);
 }
 
 void loop() {
 
 }
+

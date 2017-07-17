@@ -41,18 +41,23 @@ void initialGSM (void)
 
 void sendRequest(void)
 {
-  serialGSM.write("AT+CIPSHUT\r");
+  serialGSM.write("AT+CIPSHUT\r\n");
 
   delay(5000);
+
+  serialGSM.write("AT+CIFSR\r\n");
+
+  delay(2000);
+  
   serialGSM.write("AT+CIPSTART=\"TCP\",\"online.tyche.ua\",\"747\"\r");
 
   delay(5000);
-  //char data[] = "{\"s1\":\"1\",\"s2\":\"1\",\"s3\":\"0\"}\r\n";
-  scanf()
+  char data[] = "{\"s01\":\"c\",\"s02\":\"o\",\"s03\":\"d\"}\r\n";
+  
   serialGSM.print("AT+CIPSEND\r");
 
   delay(1000);
-  serialGSM.print("POST / HTTP/1.1\r\nHost: online.tyche.ua:747\r\nConnection: Keep-Alive\r\nContent-Type: application/json; charset=UTF-8\r\nContent-Length: 28\r\n\r\n");
+  serialGSM.print("POST / HTTP/1.1\r\nHost: online.tyche.ua:747\r\nConnection: Keep-Alive\r\nContent-Type: application/json; charset=UTF-8\r\nContent-Length: 33\r\n\r\n");
 
   serialGSM.print(data);
 

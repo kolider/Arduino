@@ -15,10 +15,10 @@
 #define REGISTER_1  CLOCK_PIN_1, DATA_PIN_1, LATCH_PIN_1 
 #define REGISTER_2  CLOCK_PIN_2, DATA_PIN_2, LATCH_PIN_2 
 #define REGISTER_DELAY_MS 10
-#define DATA_WIDTH_REG 7
+#define DATA_WIDTH_REG 8
 
 //Прототипи
-char* readReg(uint8_t clockPin, uint8_t dataPin, uint8_t latchPin);
+uint8_t readReg(uint8_t clockPin, uint8_t dataPin, uint8_t latchPin);
 boolean initialGSM (void);
 boolean sendCommandGSM(char* command);
 void sendRequest(void);
@@ -48,90 +48,119 @@ void setup() {
 
   Serial.begin(9600);
   while(!Serial);
-  //while (!initialGSM());
+  while (!initialGSM());
+  sendRequest();
 }
 
 //Робочий Цикл
 void loop() {
-
+    
 }
 
 //Реалізація функцій
-char* readReg(uint8_t clockPin, uint8_t dataPin, uint8_t latchPin)
+uint8_t readReg(uint8_t clockPin, uint8_t dataPin, uint8_t latchPin)
 {
-  char readRegPin[DATA_WIDTH_REG] = "";
+  uint8_t readRegPin, byteVal = 0;
   
   digitalWrite(latchPin, LOW);
   delay(REGISTER_DELAY_MS);
   digitalWrite(latchPin, HIGH);
   delay(REGISTER_DELAY_MS);
   
-  for (int i = (DATA_WIDTH_REG-1); i >= 0; i--) {
+  for (int i = 0; i < DATA_WIDTH_REG; i++) {
     
-    readRegPin[i] = digitalRead(dataPin) ? 'a' : 'n';
+    readRegPin = digitalRead(dataPin);
+
+    byteVal |= (readRegPin << ((DATA_WIDTH_REG - 1) - i));
 
     digitalWrite(clockPin, HIGH);
     delay(REGISTER_DELAY_MS);
     digitalWrite(clockPin, LOW);
     delay(REGISTER_DELAY_MS);   
   }
-  return readRegPin;
+  return byteVal;
 }
 
 boolean initialGSM (void) 
 {
-  if (!sendCommandGSM("AT\r")) return false;
+  delay(7000);
   
-  if (!sendCommandGSM("AT+CIPSHUT\r\n")) return false;
+  Serial.write("AT\r\n");
 
-  if (!sendCommandGSM("AT+CGDCONT=1,\"IP\",\"www.kyivstar.net\"\r")) return false;
+  delay(15000);
+  
+  sendCommandGSM("AT+CIPSHUT");
 
-  if (!sendCommandGSM("AT+CSTT=\"www.kyivstar.net\"\r")) return false;
+  sendCommandGSM("AT+CGDCONT=1,\"IP\",\"www.kyivstar.net\"");
 
-  if (!sendCommandGSM("AT+CIICR\r")) return false;
+  sendCommandGSM("AT+CSTT=\"www.kyivstar.net\"");
+
+  while (!sendCommandGSM("AT+CIICR")){
+      delay(2000);
+      sendCommandGSM("AT+CIPSHUT");
+  }
 
   return true;
 }
 
 boolean sendCommandGSM(char* command)
-{
-
+{    
+    int len = strlen(command);
     String buffer = "";
-    unsigned long timeStart = millis();
     
-    Serial.print(command);
-    Serial.print("\r");
-
-    while(!Serial.available()){
-        if ((millis() - timeStart) > 5000) return false;
+    for (int i = 0; i < len; i++){
+        Serial.print(command[i]);
+        while(!Serial.available());
+        int j;
+        for (j = 0; Serial.available(); j++){
+            Serial.read();
+        }
+        if (j>1) return false;
+                                
     }
     
-    while (Serial.available() ){
-      char c = ""; 
-      Serial.readBytes(&c, 1);
+    Serial.print("\r\n");
+    
+    for(unsigned long i = millis(); !Serial.available();){
+        unsigned long time = millis() - i;
+        if (time > 3000) break;
+    }
+    
+    while ( Serial.available() ){
+      char volatile c = ""; 
+      c = Serial.read();
       buffer += c;
       if ( Serial.available() ){
            continue;
       }else delay(10);    
     }
-    
-    if (buffer.indexOf("OK") >= 0) return true;
-    else return false;    
+    delay(20);
+
+    if (buffer.indexOf("ERROR") >= 0){ 
+        return false;
+    }
+    else{
+        return true;    
+    }
 }
 
 void sendRequest(void)
 {
-  Serial.write("AT+CIPSHUT\r");
+  Serial.write("AT+CIPSHUT\r\n");
 
   delay(5000);
+  Serial.write("AT+CIISR\r\n");
+  delay(2000);
+  
   Serial.write("AT+CIPSTART=\"TCP\",\"online.tyche.ua\",\"747\"\r");
 
-  delay(5000);
-  char data[] = "{\"s1\":\"1\",\"s2\":\"1\",\"s3\":\"0\"}\r\n";
+  delay(2000);
+  char data[] = "{\"s01\":\"c\",\"s02\":\"o\",\"s03\":\"d\"}\r\n";
+  
   Serial.print("AT+CIPSEND\r");
 
   delay(1000);
-  Serial.print("POST / HTTP/1.1\r\nHost: online.tyche.ua:747\r\nConnection: Keep-Alive\r\nContent-Type: application/json; charset=UTF-8\r\nContent-Length: 28\r\n\r\n");
+  Serial.print("POST / HTTP/1.1\r\nHost: online.tyche.ua:747\r\nConnection: Keep-Alive\r\nContent-Type: application/json; charset=UTF-8\r\nContent-Length: 33\r\n\r\n");
 
   Serial.print(data);
 
