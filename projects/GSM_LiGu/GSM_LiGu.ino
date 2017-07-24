@@ -1,9 +1,16 @@
+//Зробити перевірку на вдалу відправку команди AT+CIPSEND
+
 #define COUNT_L 0 ///////////////////////////////////Кількість регістрів в першому плечі !!!!!!!!!!!!!!!!!!!!!!!!
 #define COUNT_R 1 ///////////////////////////////////Кількість регістрів в другому плечі !!!!!!!!!!!!!!!!!!!!!!!!
 #define BITS 8
 #define REG_L 6, 7, 3, BITS*COUNT_L //CLOCK(PD6), data(PD7), SH(PD3), розрядність плеча 
 #define REG_R 9, 10, 8, BITS*COUNT_R //CLOCK(PB1), data(PB2), SH(PB0), розрядність плеча 
 #define REG_DELAY_ms 10
+
+#define SERVER "online.tyche.ua"
+#define PORT "747"
+#define DESTINATION "/forTest/"
+#define WAITING_RESPONSE_FROM_GSM_MODULE 3000
 
 #define SIZE_BUFFER ((BITS*COUNT_L + BITS*COUNT_R)*10)+3 //for json-fotmating before request to server
 
@@ -58,7 +65,8 @@ void loop() {
     String presentStatus = loadStatusRegs();    
 
     if (!check(presentStatus, status)){
-        changeStatus(presentStatus, status);
+        while(!changeStatus(presentStatus, status));
+        delay(100);
     }
 
 }
@@ -71,8 +79,12 @@ boolean sendCommandGSM(char* command)
     
     for (int i = 0; i < len; i++){
         Serial.write(command[i]);
+        if (command[i] == '+'){
+            while(!Serial.available());
+        }        
         Serial.flush();
         delay(20);        
+
 
         while(Serial.available()){
             control = (char)Serial.read();
@@ -83,7 +95,7 @@ boolean sendCommandGSM(char* command)
                 Serial.write("\r\n");
                 Serial.flush();
                 Serial.write("AT\r\n");
-                Serial.flush();
+                delay(500);
                 return false;
             }
 
@@ -91,16 +103,15 @@ boolean sendCommandGSM(char* command)
     }
 
     Serial.write("\r\n");
-    Serial.flush();
     unsigned long time = millis();
     while(!Serial.available())
     {
-        if ((millis() - time) > 2000) return false;
+        if ((millis() - time) > WAITING_RESPONSE_FROM_GSM_MODULE) return false;
     }    
     
     while(Serial.available()){
         check += (char)Serial.read();
-        delay(20);
+        delay(30);
     }       
     if (check.indexOf("ERROR") >= 0){
         return false;
@@ -112,6 +123,7 @@ boolean sendCommandGSM(char* command)
 
 boolean initialGSM()
 { 
+    int iter = 0;
     while (!sendCommandGSM("AT+CIPSHUT"));
 
     while (!sendCommandGSM("AT+CGDCONT=1,\"IP\",\"www.kyivstar.net\""));
@@ -119,8 +131,9 @@ boolean initialGSM()
     while (!sendCommandGSM("AT+CSTT=\"www.kyivstar.net\""));
   
     while (!sendCommandGSM("AT+CIICR")){
-        delay(1000);
-        sendCommandGSM("AT+CIPSHUT");
+        delay(2000);
+        iter++;
+        if (iter > 10) break;
     }
 
     while (!sendCommandGSM("AT+CIPSHUT"));
@@ -130,22 +143,51 @@ boolean initialGSM()
 
 String sendRequest(char* request)
 {
-    int len = strlen(request);
+    int len = strlen(request), iter = 0;
     
-    while(!sendCommandGSM("AT+CIPSTART=\"TCP\",\"online.tyche.ua\",\"747\"")){
+    while(!sendCommandGSM("AT+CIPSTART=\"TCP\",\""SERVER"\",\""PORT"\"")){
         delay(1000);
         sendCommandGSM("AT+CIPSHUT");
+        
+        if (iter > 10){
+            iter = 0;
+            initialGSM();
+        }
+        iter++;
     }
-
-    delay(2000);
     
-    Serial.print("AT+CIPSEND\r\n");
+    long time = millis();
+    
+    while( !Serial.available() ){
+        if ((millis() - time) > 10000) return "";
+    }
+    
+    if ( Serial.available() ){
+        String checkConnect = "";
+        
+        while ( Serial.available() ){
+            char c = ""; 
+            Serial.readBytes(&c, 1);
+            checkConnect += c;
+            if ( Serial.available() ){
+                 continue;
+            }else {
+                delay(10);
+                if ( Serial.available() ){
+                    continue;
+                }
+                else delay (1000);
+            }    
+        }
+        if (checkConnect.indexOf("CONNECT OK") == -1) return "";        
+    }
+    
+    sendCommandGSM("AT+CIPSEND");
     Serial.flush();
   
     delay(1000);
     
-    Serial.print("POST /forTest/ HTTP/1.1\r\nHost: online.tyche.ua:747\r\n");
-    Serial.flush();
+    Serial.print("POST "DESTINATION" HTTP/1.1\r\nHost: "SERVER":"PORT"\r\n");
     Serial.print("Connection: Keep-Alive\r\nContent-Type: application/json; charset=UTF-8\r\nContent-Length: ");
     Serial.print(len+2);
     Serial.print("\r\n\r\n");
@@ -169,6 +211,7 @@ String sendRequest(char* request)
 
 }
 
+
 String Response()
 {
     if ( Serial.available() ){
@@ -188,6 +231,7 @@ String Response()
                 else delay (1000);
             }    
         }
+        if (temp.indexOf("HTTP") == -1) return "";
         int length = temp.length();
         if (length){
             int position = temp.indexOf("{");
@@ -267,7 +311,7 @@ boolean changeStatus(String presentStatus, String &globalStatus)
     int length = presentStatus.length();
     String json = "", mask = "";
 
-    if (!length && !globalStatus.length()) return false;
+    if (!length) return false;
     
     buffer[0] = '{';
     int position = 1;
@@ -316,12 +360,7 @@ boolean changeStatus(String presentStatus, String &globalStatus)
         buffer[position] = '"';
         position++;
         
-        if (globalStatus.charAt(sensor-1) == 'd'){
-            buffer[position] = globalStatus.charAt(sensor-1);
-        }else{
-            buffer[position] = presentStatus.charAt(sensor-1);            
-        }
-        //buffer[position] = (globalStatus.charAt(sensor-1) == 'd') ? 'd' : presentStatus.charAt(sensor-1);
+        buffer[position] = (globalStatus.charAt(sensor-1) == 'd') ? 'd' : presentStatus.charAt(sensor-1);
         
         position++;
         buffer[position] = '"';
@@ -336,8 +375,10 @@ boolean changeStatus(String presentStatus, String &globalStatus)
     buffer[position+1] ='\0';
     
     json = sendRequest(buffer);
+
+    if (json.length() == 0) return false;
     
-    mask = parseFromJSON(json); //Тут зробити запис тільки по символі 'd' !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    mask = parseFromJSON(json);
 
     globalStatus = prepareListenMaskToRecord(presentStatus, mask);
 
@@ -365,7 +406,7 @@ String prepareListenMaskToRecord(String presentStatus, String inputMask)
         if (c == 'd'){
             toRecord += c;
         }else{
-            toRecord += (char)presentStatus.charAt(i);
+            toRecord += presentStatus.charAt(i);
         }
     }
 
