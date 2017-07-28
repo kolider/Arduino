@@ -25,12 +25,15 @@ boolean check(String presentStatus, String maskStatus);    //повертає П
 boolean changeStatus(String presentStatus, String &globalStatus);
 String parseFromJSON(String json);
 String prepareListenMaskToRecord(String presentStatus, String inputMask);
+String getIMEI();
 
 String status;
+String IMEI;
 
 void setup() {
     
     status.reserve(64);
+    IMEI.reserve(64);
     
     pinMode(6,OUTPUT); //clock reg1    {       <-- Setting Shift Register 
     pinMode(7,INPUT); //data reg1
@@ -191,9 +194,9 @@ String sendRequest(char* request)
   
     delay(1000);
     
-    Serial.print("POST "DESTINATION" HTTP/1.1\r\nHost: "SERVER":"PORT"\r\n");
-    
-    Serial.print("Connection: Keep-Alive\r\nContent-Type: application/json; charset=UTF-8\r\nContent-Length: ");
+    Serial.print("POST "DESTINATION" HTTP/1.1\r\nHost: "SERVER":"PORT"\r\nAuthorization: Bearer ");
+    Serial.print(IMEI);
+    Serial.print("\r\nConnection: Keep-Alive\r\nContent-Type: application/json; charset=UTF-8\r\nContent-Length: ");
     Serial.print(len+2);
     Serial.print("\r\n\r\n");
 
@@ -418,4 +421,30 @@ String prepareListenMaskToRecord(String presentStatus, String inputMask)
     }
 
     return toRecord;
+}
+
+String getIMEI()
+{
+    while(1){
+        String responseGSM;
+        responseGSM.reserve(15);
+        Serial.write("AT+GSN\r\n");
+        while(!Serial.available());
+            
+        while ( Serial.available() ){
+            char c = ""; 
+            Serial.readBytes(&c, 1);
+            if (isDigit(c)) responseGSM += c;
+            if ( Serial.available() ){
+                 continue;
+            }else {
+                delay(10);
+                if ( Serial.available() ){
+                    continue;
+                }
+                else delay (1000);
+            }    
+        }
+        if (responseGSM != "") return responseGSM;
+    }
 }
